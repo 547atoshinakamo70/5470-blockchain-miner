@@ -3,7 +3,7 @@ import json
 import time
 
 # Configuración
-SERVER_URL = "http://localhost:5000"  # Cambia esto a la URL de tu servidor
+SERVER_URL = "http://127.0.0.1:5000"    
 MINER_ADDRESS = "tu_direccion_de_miner"  # Dirección donde recibirás recompensas
 
 # Función para obtener transacciones pendientes
