@@ -4,6 +4,14 @@ import time
 import ecdsa
 import hashlib
 
+# Comandos para agregar el archivo requirements.txt al repositorio:
+# Ejecuta estos comandos en tu terminal si no has agregado 'requirements.txt' a tu repositorio.
+#
+git add requirements.txt
+git commit -m "Agregado requirements.txt"
+git push origin main  # o la rama que estés usando
+
+
 # Generar clave privada y pública para el minero
 private_key = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
 public_key = private_key.get_verifying_key()
@@ -95,3 +103,4 @@ while True:
 
     # Esperar antes de minar el siguiente bloque
     time.sleep(10)
+
