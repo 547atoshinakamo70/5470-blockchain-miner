@@ -18,7 +18,7 @@ print(f"Clave pública: {public_key.to_string().hex()}")
 print(f"Dirección de minero: {address}")
 
 # Configuración del minero
-SERVER_URL = "http://83.59.160.219:5000"  # Cambia esto a la URL pública de tu servidor si lo compartes
+SERVER_URL = "http://172.21.50.114:5000"  # Cambia esto a la URL pública de tu servidor si lo compartes
 MINER_ADDRESS = address  # Usa la dirección generada automáticamente
 
 # Función para obtener transacciones pendientes
