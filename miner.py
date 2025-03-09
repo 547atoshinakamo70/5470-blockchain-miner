@@ -3,14 +3,14 @@ import json
 import time
 import ecdsa
 import hashlib
+import os  # Añadido para variables de entorno
 
 # Comandos para agregar el archivo requirements.txt al repositorio:
 # Ejecuta estos comandos en tu terminal si no has agregado 'requirements.txt' a tu repositorio.
 #
-git add requirements.txt
-git commit -m "Agregado requirements.txt"
-git push origin main  # o la rama que estés usando
-
+# git add requirements.txt
+# git commit -m "Agregado requirements.txt"
+# git push origin main  # o la rama que estés usando
 
 # Generar clave privada y pública para el minero
 private_key = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
@@ -26,7 +26,7 @@ print(f"Clave pública: {public_key.to_string().hex()}")
 print(f"Dirección de minero: {address}")
 
 # Configuración del minero
-SERVER_URL = "http://localhost:5000"  # Cambia esto a la URL pública de tu servidor si lo compartes
+SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5000")  # Usa variable de entorno
 MINER_ADDRESS = address  # Usa la dirección generada automáticamente
 
 # Función para obtener transacciones pendientes
