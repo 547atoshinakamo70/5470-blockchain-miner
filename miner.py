@@ -1,106 +1,123 @@
+from flask import Flask, request, jsonify
 import requests
 import json
 import time
 import ecdsa
 import hashlib
-import os  # Añadido para variables de entorno
+import os
 
-# Comandos para agregar el archivo requirements.txt al repositorio:
-# Ejecuta estos comandos en tu terminal si no has agregado 'requirements.txt' a tu repositorio.
-#
-# git add requirements.txt
-# git commit -m "Agregado requirements.txt"
-# git push origin main  # o la rama que estés usando
+app = Flask(__name__)
 
-# Generar clave privada y pública para el minero
-private_key = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
-public_key = private_key.get_verifying_key()
+# Configuración del servidor de la blockchain
+BLOCKCHAIN_SERVER_URL = os.getenv("http://172.21.50.114:5000", "http://localhost:5000")
 
-# Derivar la dirección (hash SHA-256 de la clave pública)
-public_key_bytes = public_key.to_string()
-address = hashlib.sha256(public_key_bytes).hexdigest()
+# Función para generar claves para el minero
+def generate_miner_keys():
+    private_key = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
+    public_key = private_key.get_verifying_key()
+    public_key_bytes = public_key.to_string()
+    address = hashlib.sha256(public_key_bytes).hexdigest()
+    return private_key.to_string().hex(), public_key.to_string().hex(), address
 
-# Mostrar las claves y la dirección generada
-print(f"Clave privada: {private_key.to_string().hex()}")
-print(f"Clave pública: {public_key.to_string().hex()}")
-print(f"Dirección de minero: {address}")
+# Endpoint para registrar un nuevo minero
+@app.route('/register', methods=['POST'])
+def register():
+    private_key, public_key, address = generate_miner_keys()
+    return jsonify({
+        "private_key": private_key,
+        "public_key": public_key,
+        "address": address
+    }), 201
 
-# Configuración del minero
-SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5000")  # Usa variable de entorno
-MINER_ADDRESS = address  # Usa la dirección generada automáticamente
+# Endpoint para minar un bloque
+@app.route('/mine', methods=['POST'])
+def mine():
+    data = request.get_json()
+    miner_address = data.get("miner_address")
+    if not miner_address:
+        return jsonify({"error": "Se requiere la dirección del minero"}), 400
 
-# Función para obtener transacciones pendientes
-def get_pending_transactions():
-    try:
-        response = requests.get(f"{SERVER_URL}/pending_transactions")
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"Error al obtener transacciones pendientes: {response.status_code}")
-            return []
-    except requests.RequestException as e:
-        print(f"Error de conexión: {e}")
-        return []
-
-# Función para crear un nuevo bloque
-def create_block(index, transactions, previous_hash, nonce=0):
-    block = {
-        "index": index,
-        "transactions": transactions,
-        "timestamp": time.time(),
-        "previous_hash": previous_hash,
-        "nonce": nonce
-    }
-    return block
-
-# Función para enviar el bloque propuesto al servidor
-def propose_block(block):
-    headers = {'Content-Type': 'application/json'}
-    try:
-        response = requests.post(f"{SERVER_URL}/propose_block", headers=headers, data=json.dumps(block))
-        if response.status_code == 201:
-            print("Bloque propuesto exitosamente")
-        else:
-            print(f"Error al proponer bloque: {response.status_code} - {response.text}")
-    except requests.RequestException as e:
-        print(f"Error de conexión: {e}")
-
-# Ciclo de minado
-while True:
     try:
         # Obtener el último bloque
-        response = requests.get(f"{SERVER_URL}/chain")
-        if response.status_code == 200:
-            chain = response.json()["chain"]
-            last_block = chain[-1]
-            index = last_block["index"] + 1
-            previous_hash = last_block["hash"]
+        response = requests.get(f"{BLOCKCHAIN_SERVER_URL}/chain")
+        if response.status_code != 200:
+            return jsonify({"error": "No se pudo obtener la cadena"}), 500
+        chain = response.json()["chain"]
+        last_block = chain[-1]
+        index = last_block["index"] + 1
+        previous_hash = last_block["hash"]
+
+        # Obtener transacciones pendientes
+        response = requests.get(f"{BLOCKCHAIN_SERVER_URL}/pending_transactions")
+        if response.status_code != 200:
+            return jsonify({"error": "No se pudieron obtener las transacciones pendientes"}), 500
+        transactions = response.json()
+
+        # Añadir recompensa para el minero
+        reward_tx = {
+            "sender": "system",
+            "receiver": miner_address,
+            "amount": 50,  # Ajusta la recompensa según tu sistema
+            "signature": None
+        }
+        transactions.append(reward_tx)
+
+        # Crear el bloque
+        block = {
+            "index": index,
+            "transactions": transactions,
+            "timestamp": time.time(),
+            "previous_hash": previous_hash,
+            "nonce": 0  # Ajusta según tu algoritmo de consenso
+        }
+
+        # Proponer el bloque al servidor de la blockchain
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(f"{BLOCKCHAIN_SERVER_URL}/propose_block", headers=headers, data=json.dumps(block))
+        if response.status_code == 201:
+            return jsonify({"message": "Bloque propuesto exitosamente"}), 201
         else:
-            print(f"Error al obtener la cadena: {response.status_code}")
-            time.sleep(10)
-            continue
+            return jsonify({"error": "No se pudo proponer el bloque", "details": response.text}), 400
     except requests.RequestException as e:
-        print(f"Error de conexión: {e}")
-        time.sleep(10)
-        continue
+        return jsonify({"error": str(e)}), 500
 
-    # Obtener transacciones pendientes
-    transactions = get_pending_transactions()
+# Endpoint para enviar tokens (ejemplo básico)
+@app.route('/send', methods=['POST'])
+def send_tokens():
+    data = request.get_json()
+    sender_address = data.get("sender_address")
+    receiver_address = data.get("receiver_address")
+    amount = data.get("amount")
+    private_key = data.get("private_key")  # La clave privada debe venir del cliente
 
-    # Añadir recompensa para el minero
-    reward_tx = {
-        "sender": "system",
-        "receiver": MINER_ADDRESS,
-        "amount": 50,  # Ajusta la recompensa según tu sistema
-        "signature": None
+    if not all([sender_address, receiver_address, amount, private_key]):
+        return jsonify({"error": "Faltan datos requeridos"}), 400
+
+    # Crear transacción
+    tx = {
+        "sender": sender_address,
+        "receiver": receiver_address,
+        "amount": amount,
+        "signature": None  # Firma pendiente (ver más abajo)
     }
-    transactions.append(reward_tx)
 
-    # Crear y proponer el bloque
-    block = create_block(index, transactions, previous_hash)
-    print(f"Minando bloque {index} con {len(transactions)} transacciones...")
-    propose_block(block)
+    # Firmar la transacción (simplificado)
+    sk = ecdsa.SigningKey.from_string(bytes.fromhex(private_key), curve=ecdsa.SECP256k1)
+    tx_string = json.dumps(tx, sort_keys=True).encode()
+    signature = sk.sign(tx_string).hex()
+    tx["signature"] = signature
 
-    # Esperar antes de minar el siguiente bloque
-    time.sleep(10)
+    # Enviar la transacción al servidor de la blockchain
+    try:
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(f"{BLOCKCHAIN_SERVER_URL}/new_transaction", headers=headers, data=json.dumps(tx))
+        if response.status_code == 201:
+            return jsonify({"message": "Transacción enviada exitosamente"}), 201
+        else:
+            return jsonify({"error": "No se pudo enviar la transacción", "details": response.text}), 400
+    except requests.RequestException as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5001, debug=True)
 
