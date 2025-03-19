@@ -3,207 +3,98 @@
 
 ### Guide to Use the Mining Code Linked to 5470 Blockchain
 
-#### 1. **Pre-requisites**
 
-Before starting, make sure you have the following components installed:
+### 1. **Install Necessary Libraries**
 
-- **Python 3.x**: You can verify the installed version by running:
-  ```bash
-  python3 --version
-  ```
+Before running the mining code, ensure that you have the required Python libraries installed. You will need `requests` for HTTP requests and other Python dependencies for the blockchain.
 
-- **Required packages**: Ensure that the necessary packages are installed in your Python environment. If they are not installed, use the following command to install them:
-  ```bash
-  pip install flask requests ecdsa hashlib psycopg2 pika tensorflow python-dotenv
-  ```
+Run the following command to install the necessary libraries:
 
-- **Blockchain Running**: You need to have your blockchain running on a server (local or remote) that is accessible from the mining terminal. This server should have the correct endpoints set up to interact with the miners.
-
-#### 2. **Set up Your Blockchain Server**
-
-Make sure your blockchain is running and that the endpoints are set up correctly. The main endpoints you'll need are:
-
-- **/chain**: To get the blockchain.
-- **/pending_transactions**: To get pending transactions.
-- **/propose_block**: To propose new blocks.
-- **/new_transaction**: To send new transactions.
-
-Your blockchain URL might look like `http://localhost:5000` if it's on the same machine, or a remote IP address like `http://172.21.50.114:5000`.
-
-#### 3. **Set Up Environment Variables**
-
-You can use a `.env` file to set up the environment variables and keep them separate from the source code. Create a `.env` file in the root of your project with the following content:
-
-```env
-BLOCKCHAIN_SERVER_URL=http://localhost:5000
+```bash
+pip install requests
 ```
 
-This file contains the URL of the blockchain server that your mining code will connect to. You can change this URL if your blockchain is hosted elsewhere.
+If you haven't already installed `flask` (for your blockchain API), make sure it's installed as well:
 
-#### 4. **Miner Code (Miner.py)**
+```bash
+pip install flask
+```
 
-Here’s an example of the mining code that interacts with your blockchain:
+### 2. **Set Up Your Blockchain Server**
+
+Make sure your blockchain is running on your public IP (`2.137.118.154`) on port `5000`. If you have an API endpoint to add blocks (e.g., `/api/add_block`), make sure it's correctly set up in your blockchain code.
+
+For example, a simple Flask server to add blocks might look like this:
 
 ```python
 from flask import Flask, request, jsonify
-import requests
-import json
-import time
-import ecdsa
-import hashlib
-import os
 
 app = Flask(__name__)
 
-# Blockchain server configuration
-BLOCKCHAIN_SERVER_URL = os.getenv("BLOCKCHAIN_SERVER_URL", "http://localhost:5000")
-
-# Function to generate keys for the miner
-def generate_miner_keys():
-    private_key = ecdsa.SigningKey.generate(curve=ecdsa.SECP256k1)
-    public_key = private_key.get_verifying_key()
-    public_key_bytes = public_key.to_string()
-    address = hashlib.sha256(public_key_bytes).hexdigest()
-    return private_key.to_string().hex(), public_key.to_string().hex(), address
-
-# Endpoint to register a new miner
-@app.route('/register', methods=['POST'])
-def register():
-    private_key, public_key, address = generate_miner_keys()
-    return jsonify({
-        "private_key": private_key,
-        "public_key": public_key,
-        "address": address
-    }), 201
-
-# Endpoint to mine a block
-@app.route('/mine', methods=['POST'])
-def mine():
-    data = request.get_json()
-    miner_address = data.get("miner_address")
-    if not miner_address:
-        return jsonify({"error": "Miner address is required"}), 400
-
-    try:
-        # Get the last block
-        response = requests.get(f"{BLOCKCHAIN_SERVER_URL}/chain")
-        if response.status_code != 200:
-            return jsonify({"error": "Could not retrieve the chain"}), 500
-        chain = response.json()["chain"]
-        last_block = chain[-1]
-        index = last_block["index"] + 1
-        previous_hash = last_block["hash"]
-
-        # Get pending transactions
-        response = requests.get(f"{BLOCKCHAIN_SERVER_URL}/pending_transactions")
-        if response.status_code != 200:
-            return jsonify({"error": "Could not retrieve pending transactions"}), 500
-        transactions = response.json()
-
-        # Add miner's reward transaction
-        reward_tx = {
-            "sender": "system",
-            "receiver": miner_address,
-            "amount": 50,  # Adjust the reward based on your system
-            "signature": None
-        }
-        transactions.append(reward_tx)
-
-        # Create the block
-        block = {
-            "index": index,
-            "transactions": transactions,
-            "timestamp": time.time(),
-            "previous_hash": previous_hash,
-            "nonce": 0  # Adjust based on your consensus algorithm
-        }
-
-        # Propose the block to the blockchain server
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(f"{BLOCKCHAIN_SERVER_URL}/propose_block", headers=headers, data=json.dumps(block))
-        if response.status_code == 201:
-            return jsonify({"message": "Block proposed successfully"}), 201
-        else:
-            return jsonify({"error": "Could not propose block", "details": response.text}), 400
-    except requests.RequestException as e:
-        return jsonify({"error": str(e)}), 500
-
-# Endpoint to send tokens (basic example)
-@app.route('/send', methods=['POST'])
-def send_tokens():
-    data = request.get_json()
-    sender_address = data.get("sender_address")
-    receiver_address = data.get("receiver_address")
-    amount = data.get("amount")
-    private_key = data.get("private_key")  # Private key must come from the client
-
-    if not all([sender_address, receiver_address, amount, private_key]):
-        return jsonify({"error": "Missing required data"}), 400
-
-    # Create the transaction
-    tx = {
-        "sender": sender_address,
-        "receiver": receiver_address,
-        "amount": amount,
-        "signature": None  # Pending signature (see below)
-    }
-
-    # Sign the transaction (simplified)
-    sk = ecdsa.SigningKey.from_string(bytes.fromhex(private_key), curve=ecdsa.SECP256k1)
-    tx_string = json.dumps(tx, sort_keys=True).encode()
-    signature = sk.sign(tx_string).hex()
-    tx["signature"] = signature
-
-    # Send the transaction to the blockchain server
-    try:
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(f"{BLOCKCHAIN_SERVER_URL}/new_transaction", headers=headers, data=json.dumps(tx))
-        if response.status_code == 201:
-            return jsonify({"message": "Transaction sent successfully"}), 201
-        else:
-            return jsonify({"error": "Could not send transaction", "details": response.text}), 400
-    except requests.RequestException as e:
-        return jsonify({"error": str(e)}), 500
+@app.route('/api/add_block', methods=['POST'])
+def add_block():
+    block_data = request.json  # Receive the block in JSON format
+    # Here you would add the block to your blockchain
+    # For now, we just print it
+    print(f"Block added: {block_data}")
+    return jsonify({'message': 'Block added successfully!'}), 200
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5000)  # Allow connections from any IP
 ```
 
-#### 5. **Run Your Miner**
+Make sure this server is running on the same machine where you're mining, or configure the server to allow connections from your mining machine.
 
-1. **Set up the `BLOCKCHAIN_SERVER_URL` environment variable**:
-   If you're not using `.env`, make sure the blockchain URL is correctly defined in the code. Ensure that your blockchain is running on the URL you provided (`http://localhost:5000` by default).
+### 3. **Configure the Miner Code**
 
-2. **Run the Flask server for the miner**:
-   Run the file using the following command:
-   ```bash
-   python3 miner.py
-   ```
+1. **IP Address and Port Configuration**: Update the `BLOCKCHAIN_API_URL` in the miner code with your public IP and port number (`2.137.118.154:5000`).
+   - The URL should look like this: `"http://2.137.118.154:5000/api"`
 
-   This will start your miner on port `5001` on your machine.
+2. **Replace the Miner Address**: In the `reward_miner()` method, replace `"miner_address"` with the actual miner's address. If you don’t have one, you could generate an address or use a placeholder.
 
-#### 6. **Start Mining**
+3. **Ensure Blockchain API Is Running**: Verify that the blockchain API is properly running and accessible from the mining machine. You can test this by visiting `http://2.137.118.154:5000/api/add_block` from a browser or using `curl`:
 
-- To register a new miner, you can make a `POST` request to `http://localhost:5001/register`.
-- To mine a block, make a `POST` request to `http://localhost:5001/mine` with the `miner_address` in the request body.
-
-Example of a `POST` request to `/mine`:
-
-```json
-{
-  "miner_address": "your_miner_address_here"
-}
+```bash
+curl -X POST http://2.137.118.154:5000/api/add_block -H "Content-Type: application/json" -d '{"block_data": "example"}'
 ```
 
-#### 7. **Verification**
+### 4. **Run the Miner**
 
-You can verify that blocks are being mined correctly by visiting the `/chain` endpoint on your blockchain.
+Once you have the blockchain API set up and the miner code configured, you can start the miner script.
 
----
+1. Open a terminal on the mining machine.
+2. Navigate to the directory where your mining code is saved.
+3. Run the mining script:
 
-### Summary
+```bash
+python3 miner_script.py  # Replace miner_script.py with your actual file name
+```
 
-1. Set up the environment variables and the blockchain server.
-2. Run the miner using Flask on port `5001`.
-3. Use the `/register` endpoint to register a miner and `/mine` to mine blocks.
-4. The mining server will interact with your blockchain locally, validating transactions and mining blocks.
+The miner should begin mining blocks every `BLOCK_TIME` seconds (configured in the script). If a block is mined, it will send the block to the blockchain API at `http://2.137.118.154:5000/api/add_block`.
+
+### 5. **Debugging and Logs**
+
+If there are any issues or errors, check the logs output in the terminal where you're running the miner. The script uses `logging.info()` to print status messages, so make sure you're looking at the console for updates.
+
+If the miner can't connect to the API, check:
+- Firewall settings on your blockchain server.
+- Ensure the IP address and port are correct.
+- Confirm that the server is listening on `0.0.0.0` to accept connections from any IP.
+
+### 6. **Optional: Run as Background Process**
+
+To run the mining script continuously in the background (especially on a remote machine), you can use tools like `screen`, `tmux`, or simply run it with `nohup`.
+
+For example, to run with `nohup`:
+
+```bash
+nohup python3 miner_script.py &
+```
+
+This command will run the script in the background and allow it to keep running even if the terminal is closed.
+
+### Conclusion
+
+By following these steps, your mining code will mine blocks and send them to your blockchain API running on your public IP and port. Make sure to monitor both the miner and blockchain server for any issues or logs to ensure everything is working smoothly.
+
+Good luck with your blockchain project!
