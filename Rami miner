@@ -1,0 +1,244 @@
+Below is a step-by-step guide for running your mining code on Ubuntu, connecting it to your blockchain.
+
+---
+
+## Step 1: Set Up Your Ubuntu Environment
+
+1. **Update your system packages:**
+
+   Open a terminal and run:
+   ```bash
+   sudo apt update && sudo apt upgrade -y
+   ```
+
+2. **Install Python 3 and pip:**
+
+   If you don’t already have them, install using:
+   ```bash
+   sudo apt install python3 python3-pip -y
+   ```
+
+3. **(Optional) Create a Virtual Environment:**
+
+   It’s a good practice to isolate your project’s dependencies:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+4. **Install Required Python Packages:**
+
+   Install the dependencies required for your mining code:
+   ```bash
+   pip install requests python-dotenv
+   ```
+
+   (Note: Modules like `hashlib`, `json`, `time`, `os`, and `random` are part of Python’s standard library and don’t require installation.)
+
+---
+
+## Step 2: Configure Environment Variables
+
+1. **Create a `.env` File:**
+
+   In your project directory, create a file named `.env`:
+   ```bash
+   nano .env
+   ```
+
+2. **Add the Following Lines to the `.env` File:**
+
+   Adjust the values as needed (for example, if your blockchain server runs on a public IP or a different port):
+   ```env
+   BLOCKCHAIN_SERVER_URL=http://<YOUR_IP_OR_DOMAIN>:5000
+   BLOCK_TIME=10
+   MINING_DIFFICULTY=4
+   ```
+   Replace `<YOUR_IP_OR_DOMAIN>` with your actual IP address (for example, `2.137.118.154`) if your blockchain server is running on that address.
+
+3. **Save and Exit:**
+
+   In Nano, press `Ctrl + O` to write out the file, then `Enter` to confirm, and `Ctrl + X` to exit.
+
+---
+
+## Step 3: Create Your Mining Script
+
+1. **Create the Mining Code File:**
+
+   Create a file named `miner.py`:
+   ```bash
+   nano miner.py
+   ```
+
+2. **Copy and Paste the Following Code into `miner.py`:**
+
+   ```python
+   #!/usr/bin/env python3
+   import time
+   import json
+   import hashlib
+   import logging
+   import requests
+   import os
+   from dotenv import load_dotenv
+
+   # Load environment variables from .env
+   load_dotenv()
+
+   # Configuration: Blockchain server URL and mining parameters
+   BLOCKCHAIN_SERVER_URL = os.getenv("BLOCKCHAIN_SERVER_URL", "http://localhost:5000")
+   BLOCK_TIME = int(os.getenv("BLOCK_TIME", 10))
+   DIFFICULTY = int(os.getenv("MINING_DIFFICULTY", 4))  # e.g., 4 leading zeros required
+
+   # Configure logging
+   logging.basicConfig(
+       level=logging.INFO,
+       format="%(asctime)s - %(levelname)s - %(message)s"
+   )
+
+   def get_chain():
+       """Retrieve the blockchain chain from the central server."""
+       try:
+           response = requests.get(f"{BLOCKCHAIN_SERVER_URL}/chain")
+           if response.status_code == 200:
+               return response.json()["chain"]
+           else:
+               logging.error("Error retrieving chain: " + response.text)
+               return None
+       except Exception as e:
+           logging.error(f"Connection error: {e}")
+           return None
+
+   def get_pending_transactions():
+       """Retrieve pending transactions from the central server."""
+       try:
+           response = requests.get(f"{BLOCKCHAIN_SERVER_URL}/pending_transactions")
+           if response.status_code == 200:
+               return response.json()
+           else:
+               logging.error("Error retrieving pending transactions: " + response.text)
+               return []
+       except Exception as e:
+           logging.error(f"Connection error: {e}")
+           return []
+
+   def calculate_hash(index, transactions, timestamp, previous_hash, nonce):
+       """Calculate the hash of the block from its data."""
+       block_data = {
+           "index": index,
+           "transactions": transactions,
+           "timestamp": timestamp,
+           "previous_hash": previous_hash,
+           "nonce": nonce
+       }
+       block_string = json.dumps(block_data, sort_keys=True).encode()
+       return hashlib.sha256(block_string).hexdigest()
+
+   def propose_block(block):
+       """Submit the mined block to the central blockchain server."""
+       try:
+           headers = {'Content-Type': 'application/json'}
+           response = requests.post(f"{BLOCKCHAIN_SERVER_URL}/propose_block", headers=headers, data=json.dumps(block))
+           if response.status_code == 201:
+               logging.info("Block proposed successfully.")
+           else:
+               logging.error("Error proposing block: " + response.text)
+       except Exception as e:
+           logging.error(f"Error sending block: {e}")
+
+   def mine_block():
+       """Perform the mining process: retrieve data, compute the nonce, and propose the block."""
+       chain = get_chain()
+       if not chain:
+           logging.error("Unable to retrieve chain. Aborting mining.")
+           return
+       last_block = chain[-1]
+       index = last_block["index"] + 1
+       previous_hash = last_block["hash"]
+       transactions = get_pending_transactions()
+       # Assume the central blockchain adds the reward transaction
+       timestamp = time.time()
+       nonce = 0
+
+       logging.info("Starting proof-of-work...")
+       while True:
+           block_hash = calculate_hash(index, transactions, timestamp, previous_hash, nonce)
+           if block_hash.startswith("0" * DIFFICULTY):
+               logging.info(f"Block mined: nonce={nonce}, hash={block_hash}")
+               break
+           nonce += 1
+
+       # Build the mined block
+       block = {
+           "index": index,
+           "transactions": transactions,
+           "timestamp": timestamp,
+           "previous_hash": previous_hash,
+           "nonce": nonce
+       }
+       propose_block(block)
+
+   def mining_loop():
+       """Continuously run the mining process."""
+       while True:
+           logging.info("Running mining cycle...")
+           mine_block()
+           time.sleep(BLOCK_TIME)
+
+   if __name__ == "__main__":
+       logging.info("Starting mining process...")
+       mining_loop()
+   ```
+
+3. **Save and Exit:**
+
+   In Nano, press `Ctrl + O` then `Enter` to save, and `Ctrl + X` to exit.
+
+---
+
+## Step 4: Run the Mining Script
+
+1. **Ensure your blockchain central server is running:**
+
+   Make sure your blockchain server (central node) is up and running on the specified URL (for example, `http://2.137.118.154:5000` or `http://localhost:5000`).
+
+2. **Execute your mining script:**
+
+   In your terminal (or within your virtual environment), run:
+   ```bash
+   python3 miner.py
+   ```
+
+   The script should start a continuous mining loop. You'll see log messages indicating that it is retrieving the chain, pending transactions, and performing the proof-of-work.
+
+---
+
+## Step 5: Verify and Monitor
+
+1. **Check logs in the terminal:**  
+   You should see messages like:
+   - "Starting mining process..."
+   - "Running mining cycle..."
+   - "Starting proof-of-work..."
+   - "Block mined: nonce=..., hash=..."
+
+2. **Verify the blockchain status:**  
+   Open a new terminal window (or use your browser) to check the blockchain’s state via:
+   ```bash
+   curl http://<YOUR_BLOCKCHAIN_SERVER_IP>:5000/chain
+   ```
+   This should return the current chain in JSON format.
+
+---
+
+## Summary
+
+- You created a `.env` file with your blockchain server URL and mining parameters.
+- You saved the mining code as `miner.py` on your Ubuntu machine.
+- You ran the script with `python3 miner.py` from the terminal.
+- The mining script continuously retrieves the current chain, computes a valid nonce (proof-of-work), and proposes the mined block to the blockchain server.
+
+Following these steps, your mining code will be running on Ubuntu, connected to your blockchain via the specified URL, and working entirely from the terminal without Flask in the mining code. 
+
+If you have any further questions or run into any issues, feel free to ask!
