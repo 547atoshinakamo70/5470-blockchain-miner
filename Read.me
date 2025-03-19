@@ -1,0 +1,212 @@
+Below is a professional, step-by-step guide written in English for an external miner (someone who is not the owner) to run the mining code on an Ubuntu system. This guide assumes the external miner has access to the public API of the blockchain hosted at IP 2.137.118.154 on port 5000.
+
+---
+
+## Step-by-Step Guide for an External Miner on Ubuntu
+
+### 1. Prerequisites
+
+- **Ubuntu System**: Ensure you have an Ubuntu system or another Linux distribution installed.
+- **Python 3 and pip**: Verify that Python 3 and pip are installed by running:
+  ```bash
+  python3 --version
+  pip3 --version
+  ```
+- **Internet Access**: Your system must be able to connect to the public API at `http://2.137.118.154:5000`.
+
+### 2. Install Required Dependencies
+
+Open a terminal and update your system:
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+Install Python 3 and pip if they aren’t installed:
+```bash
+sudo apt install python3 python3-pip -y
+```
+
+Now, install the required Python libraries:
+```bash
+pip3 install requests python-dotenv
+```
+
+> **Note:** The code also uses libraries such as `hashlib`, `json`, `os`, etc., which are part of Python’s standard library.
+
+### 3. Create and Configure the Environment File
+
+1. In your project directory, create a file named `.env` to store configuration variables:
+   ```bash
+   nano .env
+   ```
+2. Add the following lines (adjust if necessary):
+   ```env
+   BLOCKCHAIN_API_URL=http://2.137.118.154:5000
+   BLOCK_TIME=10
+   MINING_DIFFICULTY=4
+   ```
+3. Save the file:
+   - Press `Ctrl + O`, then `Enter` to save.
+   - Press `Ctrl + X` to exit Nano.
+
+### 4. Save the Mining Code
+
+1. Create a new file named `miner.py`:
+   ```bash
+   nano miner.py
+   ```
+2. Copy and paste the following mining code into `miner.py`:
+
+   ```python
+   #!/usr/bin/env python3
+   import time
+   import json
+   import hashlib
+   import logging
+   import requests
+   import os
+   from dotenv import load_dotenv
+
+   # Load environment variables from .env
+   load_dotenv()
+
+   # Configuration of the Blockchain API and mining parameters
+   API_URL = os.getenv("BLOCKCHAIN_API_URL", "http://2.137.118.154:5000")
+   BLOCK_TIME = int(os.getenv("BLOCK_TIME", 10))
+   DIFFICULTY = int(os.getenv("MINING_DIFFICULTY", 4))  # e.g., require hash to start with 4 zeros
+
+   # Configure logging
+   logging.basicConfig(
+       level=logging.INFO,
+       format="%(asctime)s - %(levelname)s - %(message)s"
+   )
+
+   def get_chain():
+       """Fetches the current blockchain from the API."""
+       try:
+           response = requests.get(f"{API_URL}/chain")
+           if response.status_code == 200:
+               return response.json()["chain"]
+           else:
+               logging.error("Error fetching chain: " + response.text)
+               return None
+       except Exception as e:
+           logging.error("Connection error: " + str(e))
+           return None
+
+   def get_pending_transactions():
+       """Fetches pending transactions from the API."""
+       try:
+           response = requests.get(f"{API_URL}/pending_transactions")
+           if response.status_code == 200:
+               return response.json()
+           else:
+               logging.error("Error fetching pending transactions: " + response.text)
+               return []
+       except Exception as e:
+           logging.error("Connection error: " + str(e))
+           return []
+
+   def calculate_hash(index, transactions, timestamp, previous_hash, nonce):
+       """Calculates the block hash using SHA-256."""
+       block_data = {
+           "index": index,
+           "transactions": transactions,
+           "timestamp": timestamp,
+           "previous_hash": previous_hash,
+           "nonce": nonce
+       }
+       block_string = json.dumps(block_data, sort_keys=True).encode()
+       return hashlib.sha256(block_string).hexdigest()
+
+   def propose_block(block):
+       """Sends the mined block to the blockchain API."""
+       try:
+           headers = {'Content-Type': 'application/json'}
+           response = requests.post(f"{API_URL}/propose_block", headers=headers, data=json.dumps(block))
+           if response.status_code == 201:
+               logging.info("Block proposed successfully: " + response.text)
+           else:
+               logging.error("Error proposing block: " + response.text)
+       except Exception as e:
+           logging.error("Error sending block: " + str(e))
+
+   def mine_block():
+       """
+       Mines a block:
+         - Fetches the current chain and pending transactions.
+         - Executes a proof-of-work algorithm using SHA-256.
+         - Proposes the mined block to the blockchain API.
+       """
+       chain = get_chain()
+       if not chain:
+           logging.error("Unable to fetch chain. Aborting mining.")
+           return
+       last_block = chain[-1]
+       index = last_block["index"] + 1
+       previous_hash = last_block["hash"]
+       transactions = get_pending_transactions()  # May be empty
+       timestamp = time.time()
+       nonce = 0
+
+       logging.info("Starting proof-of-work...")
+       while True:
+           block_hash = calculate_hash(index, transactions, timestamp, previous_hash, nonce)
+           if block_hash.startswith("0" * DIFFICULTY):
+               logging.info(f"Block mined: nonce={nonce}, hash={block_hash}")
+               break
+           nonce += 1
+
+       block = {
+           "index": index,
+           "transactions": transactions,
+           "timestamp": timestamp,
+           "previous_hash": previous_hash,
+           "nonce": nonce,
+           "hash": block_hash
+       }
+       propose_block(block)
+
+   def mining_loop():
+       """Continuously mines blocks every BLOCK_TIME seconds."""
+       while True:
+           mine_block()
+           time.sleep(BLOCK_TIME)
+
+   if __name__ == "__main__":
+       logging.info("Starting the mining process...")
+       mining_loop()
+   ```
+
+3. Save and exit:
+   - Press `Ctrl + O`, then `Enter` to save.
+   - Press `Ctrl + X` to exit Nano.
+
+### 5. Run the Mining Code
+
+In the terminal, navigate to the directory containing `miner.py` and the `.env` file, then run:
+```bash
+python3 miner.py
+```
+
+### 6. Monitor the Process
+
+- **Console Output**: You will see logging messages indicating whether the chain and pending transactions are fetched successfully, the progress of the proof-of-work (mining), and the result of the block proposal.
+- **API Verification**: You can check your blockchain’s status by making a GET request to the chain endpoint:
+  ```bash
+  curl http://2.137.118.154:5000/chain
+  ```
+  This should return the current blockchain in JSON format if the API is working.
+
+### 7. Running in the Background (Optional)
+
+To run the mining script continuously in the background:
+- Use `nohup`:
+  ```bash
+  nohup python3 miner.py &
+  ```
+- Alternatively, use `tmux` or `screen` to create a persistent session.
+
+---
+
+By following these steps, an external miner can run the mining code on Ubuntu and connect to your blockchain API at `http://2.137.118.154:5000`. This guide is intended for someone external who wishes to contribute mining power to your blockchain network. If you have any questions or need further adjustments, feel free to ask!
