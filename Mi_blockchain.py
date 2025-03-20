@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuración de la API y parámetros de minería
-API_URL = os.getenv("BLOCKCHAIN_API_URL", "http://2.137.118.154:5000")
+API_URL = os.getenv("BLOCKCHAIN_API_URL", "http://172.21.50.114:5000")
 BLOCK_TIME = int(os.getenv("BLOCK_TIME", 10))
 DIFFICULTY = int(os.getenv("MINING_DIFFICULTY", 4))  # Por ejemplo, 4 ceros al inicio del hash
 
