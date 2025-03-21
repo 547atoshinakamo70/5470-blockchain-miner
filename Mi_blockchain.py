@@ -24,7 +24,8 @@ logging.basicConfig(
 def get_chain():
     """Obtiene la cadena de bloques actual desde la API de la blockchain."""
     try:
-        response = requests.get(f"{API_URL}/chain")
+        response = requests.get(f"{BLOCKCHAIN_API_URL}/chain")
+
         if response.status_code == 200:
             return response.json()["chain"]
         else:
@@ -37,7 +38,7 @@ def get_chain():
 def get_pending_transactions():
     """Obtiene las transacciones pendientes desde la API de la blockchain."""
     try:
-        response = requests.get(f"{API_URL}/pending_transactions")
+        response = requests.get(f"{BLOCKCHAIN_API_URL}/pending_transactions")
         if response.status_code == 200:
             return response.json()
         else:
@@ -63,7 +64,7 @@ def propose_block(block):
     """Envía el bloque minado a la API de la blockchain."""
     try:
         headers = {'Content-Type': 'application/json'}
-        response = requests.post(f"{API_URL}/propose_block", headers=headers, data=json.dumps(block))
+        response = requests.post(f"{BLOCKCHAIN_API_URL}/propose_block", headers=headers, data=json.dumps(block))
         if response.status_code == 201:
             logging.info("Bloque propuesto exitosamente: " + response.text)
         else:
